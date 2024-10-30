@@ -13,9 +13,25 @@ QR_SIZE_MM = 18  # Размер DataMatrix кода в мм
 MM_TO_PIXELS = 11.8  # Коэффициент перевода из мм в пиксели
 
 
+def draw_dashed_border(draw, x0, y0, x1, y1, dash_length=5):
+    # Рисуем пунктирную линию сверху
+    for i in range(x0, x1, dash_length * 2):
+        draw.line([(i, y0), (i + dash_length, y0)], fill="black")
+    # Слева
+    for i in range(y0, y1, dash_length * 2):
+        draw.line([(x0, i), (x0, i + dash_length)], fill="black")
+    # Справа
+    for i in range(y0, y1, dash_length * 2):
+        draw.line([(x1, i), (x1, i + dash_length)], fill="black")
+    # Снизу
+    for i in range(x0, x1, dash_length * 2):
+        draw.line([(i, y1), (i + dash_length, y1)], fill="black")
+
+
 def generate_label_image(code_text):
     # Создаем изображение для одной метки
     img = Image.new('RGB', (int(LABEL_WIDTH_MM * MM_TO_PIXELS), int(LABEL_HEIGHT_MM * MM_TO_PIXELS)), color='white')
+    draw = ImageDraw.Draw(img)
 
     # Генерация DataMatrix-кода
     data_matrix = encode(code_text.encode('utf-8'))
@@ -25,13 +41,15 @@ def generate_label_image(code_text):
                        int((LABEL_HEIGHT_MM - QR_SIZE_MM - 5) * MM_TO_PIXELS // 2)))
 
     # Печать кода под DataMatrix, повернутого на 90 градусов
-    draw = ImageDraw.Draw(img)
     font = ImageFont.truetype("arial.ttf", 10)  # Замените путь к шрифту, если необходимо
     rotated_text_img = Image.new("RGB", (int(LABEL_HEIGHT_MM * MM_TO_PIXELS), int(5 * MM_TO_PIXELS)), color='white')
     rotated_draw = ImageDraw.Draw(rotated_text_img)
     rotated_draw.text((0, 0), code_text, fill="black", font=font)
     rotated_text_img = rotated_text_img.rotate(90, expand=True)
     img.paste(rotated_text_img, (int((LABEL_WIDTH_MM - 5) * MM_TO_PIXELS), 0))
+
+    # Добавляем пунктирную границу вокруг метки
+    draw_dashed_border(draw, 0, 0, int(LABEL_WIDTH_MM * MM_TO_PIXELS) - 1, int(LABEL_HEIGHT_MM * MM_TO_PIXELS) - 1)
 
     return img
 
