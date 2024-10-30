@@ -25,23 +25,61 @@ def draw_dashed_border(draw, x0, y0, x1, y1, dash_length=5):
         draw.line([(x1, i), (x1, i + dash_length)], fill="black")
 
 
+def wrap_text(draw, text, font, max_width):
+    """Разбивает текст на строки, чтобы он помещался в указанный max_width."""
+    lines = []
+    words = text.split()
+    current_line = words[0]
+
+    for word in words[1:]:
+        # Проверка длины текущей строки с добавлением нового слова
+        if draw.textlength(current_line + ' ' + word, font=font) <= max_width:
+            current_line += ' ' + word
+        else:
+            lines.append(current_line)
+            current_line = word
+
+    lines.append(current_line)
+    return lines
+
+
 def generate_label_image(code_text):
     img = Image.new('RGB', (int(LABEL_WIDTH_MM * MM_TO_PIXELS), int(LABEL_HEIGHT_MM * MM_TO_PIXELS)), color='white')
     draw = ImageDraw.Draw(img)
 
+    # Генерация DataMatrix кода
     data_matrix = encode(code_text.encode('utf-8'))
     qr_img = Image.frombytes('RGB', (data_matrix.width, data_matrix.height), data_matrix.pixels)
     qr_img = qr_img.resize((int(QR_SIZE_MM * MM_TO_PIXELS), int(QR_SIZE_MM * MM_TO_PIXELS)))
     img.paste(qr_img, (int((LABEL_WIDTH_MM - QR_SIZE_MM) * MM_TO_PIXELS // 2), int(5)))
 
-    font = ImageFont.truetype("arial.ttf", 12)
-    text_bbox = draw.textbbox((0, 0), code_text, font=font)
-    text_width = text_bbox[2] - text_bbox[0]
-    text_height = text_bbox[3] - text_bbox[1]
-    text_x = (img.width - text_width) // 2
-    text_y = int(QR_SIZE_MM * MM_TO_PIXELS + 10)
-    draw.text((text_x, text_y), code_text, fill="black", font=font)
+    # Основной шрифт и параметры текста
+    font = ImageFont.truetype("arial.ttf", 14)
+    max_text_width = img.width - 10  # Учитываем отступы по бокам
 
+    # Первая строка текста
+    lines = wrap_text(draw, code_text, font, max_text_width)
+    text_y = int(QR_SIZE_MM * MM_TO_PIXELS + 10)
+
+    for line in lines:
+        text_bbox = draw.textbbox((0, 0), line, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_x = (img.width - text_width) // 2
+        draw.text((text_x, text_y), line, fill="black", font=font)
+        text_y += text_bbox[3] - text_bbox[1]
+
+    # Вторая строка текста (пример дополнительного текста)
+    additional_text = "445"
+    additional_lines = wrap_text(draw, additional_text, font, max_text_width)
+
+    for line in additional_lines:
+        text_bbox = draw.textbbox((0, 0), line, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_x = (img.width - text_width) // 2
+        draw.text((text_x, text_y), line, fill="black", font=font)
+        text_y += text_bbox[3] - text_bbox[1]
+
+    # Пунктирная рамка
     draw_dashed_border(draw, 0, 0, int(LABEL_WIDTH_MM * MM_TO_PIXELS) - 1, int(LABEL_HEIGHT_MM * MM_TO_PIXELS) - 1)
 
     return img
