@@ -1,9 +1,12 @@
-import tkinter as tk
-from tkinter import filedialog
 from PIL import Image, ImageDraw, ImageFont
 from pylibdmtx.pylibdmtx import encode  # Библиотека для DataMatrix
 from reportlab.pdfgen import canvas
 import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from pylibdmtx.pylibdmtx import decode
+import pdfplumber
+from PIL import Image
 
 # Настройки размера меток
 LABEL_WIDTH_MM = 19  # Ширина метки в мм
@@ -43,7 +46,20 @@ def wrap_text(draw, text, font, max_width):
     return lines
 
 
+def transform_code(code_text):
+    # Шаг 1: Добавляем символ `` в начало
+    modified_code = "\x1D" + code_text
+
+    # Шаг 2: Убираем скобки вокруг "(01)" и "(21)"
+    modified_code = modified_code.replace("(01)", "01").replace("(21)", "21")
+
+    # Шаг 4: Отсчитываем 6 символов справа и вставляем `` перед ними
+    #if len(modified_code) > 6:
+    #    modified_code = modified_code[:-6] + "\x1D" + modified_code[-6:]
+    #print(modified_code)
+    return modified_code
 def generate_label_image(code_text):
+    print(code_text)
     img = Image.new('RGB', (int(LABEL_WIDTH_MM * MM_TO_PIXELS), int(LABEL_HEIGHT_MM * MM_TO_PIXELS)), color='white')
     draw = ImageDraw.Draw(img)
 
@@ -57,8 +73,13 @@ def generate_label_image(code_text):
     font = ImageFont.truetype("arial.ttf", 14)
     max_text_width = img.width - 10  # Учитываем отступы по бокам
 
+    # Дополнительный шрифт и параметры текста
+    font_ext = ImageFont.truetype("arial.ttf", 21)
+    max_text_width_ext = img.width - 10  # Учитываем отступы по бокам
+
     # Первая строка текста
-    lines = wrap_text(draw, code_text, font, max_text_width)
+    substring_gtin = code_text[3:18]
+    lines = wrap_text(draw, substring_gtin, font, max_text_width)
     text_y = int(QR_SIZE_MM * MM_TO_PIXELS + 10)
 
     for line in lines:
@@ -70,13 +91,13 @@ def generate_label_image(code_text):
 
     # Вторая строка текста (пример дополнительного текста)
     additional_text = "445"
-    additional_lines = wrap_text(draw, additional_text, font, max_text_width)
+    additional_lines = wrap_text(draw, additional_text, font_ext, max_text_width_ext)
 
     for line in additional_lines:
-        text_bbox = draw.textbbox((0, 0), line, font=font)
+        text_bbox = draw.textbbox((0, 0), line, font=font_ext)
         text_width = text_bbox[2] - text_bbox[0]
         text_x = (img.width - text_width) // 2
-        draw.text((text_x, text_y), line, fill="black", font=font)
+        draw.text((text_x, text_y), line, fill="black", font=font_ext)
         text_y += text_bbox[3] - text_bbox[1]
 
     # Пунктирная рамка
@@ -92,6 +113,7 @@ def save_labels_to_pdf(codes, output_pdf_path, page_width_mm, page_height_mm):
     c = canvas.Canvas(output_pdf_path, pagesize=(page_width_px, page_height_px))
 
     for code_text in codes:
+        code_text = transform_code(code_text)
         label_img = generate_label_image(code_text)
         temp_path = "temp_label.png"
         label_img.save(temp_path)
@@ -134,6 +156,38 @@ def paste_from_clipboard():
         print("Буфер обмена пуст или недоступен.")
 
 
+# Функция для чтения и декодирования DataMatrix кодов из PDF
+def read_datamatrix_from_pdf(file_path):
+    codes = []
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                # Получаем изображение всей страницы
+                page_image = page.to_image(resolution=300)
+                pil_image = page_image.original  # Извлекаем как PIL изображение
+
+                # Декодируем все DataMatrix коды на странице
+                decoded_data = decode(pil_image)
+                for data in decoded_data:
+                    codes.append(data.data.decode())
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Не удалось прочитать PDF: {e}")
+    return codes
+
+# Обработчик кнопки "Прочитать из файла"
+def on_read_from_file():
+    file_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
+    if not file_path:
+        return
+
+    codes = read_datamatrix_from_pdf(file_path)
+    if codes:
+        text_box.delete("1.0", tk.END)
+        text_box.insert(tk.END, "\n".join(codes))
+    else:
+        messagebox.showinfo("Результат", "Не найдено кодов DataMatrix")
+
+
 # Интерфейс
 root = tk.Tk()
 root.title("Label PDF Generator")
@@ -145,6 +199,10 @@ text_box.pack()
 # Кнопка вставки из буфера обмена
 paste_button = tk.Button(root, text="Вставить из буфера", command=paste_from_clipboard)
 paste_button.pack()
+
+# Кнопка "Прочитать из файла"
+read_button = tk.Button(root, text="Прочитать из файла", command=on_read_from_file)
+read_button.pack()
 
 # Поля ввода для размеров страницы
 tk.Label(root, text="Ширина страницы (мм):").pack()
