@@ -7,6 +7,8 @@ from tkinter import filedialog, messagebox
 from pylibdmtx.pylibdmtx import decode
 import pdfplumber
 from PIL import Image
+from io import BytesIO
+from reportlab.lib.units import mm
 
 # Настройки размера меток
 LABEL_WIDTH_MM = 19  # Ширина метки в мм
@@ -70,35 +72,50 @@ def generate_label_image(code_text):
     img.paste(qr_img, (int((LABEL_WIDTH_MM - QR_SIZE_MM) * MM_TO_PIXELS // 2), int(5)))
 
     # Основной шрифт и параметры текста
-    font = ImageFont.truetype("arial.ttf", 14)
+    font = ImageFont.truetype("arial.ttf", 21)
     max_text_width = img.width - 10  # Учитываем отступы по бокам
 
     # Дополнительный шрифт и параметры текста
-    font_ext = ImageFont.truetype("arial.ttf", 21)
+    font_ext = ImageFont.truetype("arialbd.ttf", 36)
     max_text_width_ext = img.width - 10  # Учитываем отступы по бокам
 
     # Первая строка текста
-    substring_gtin = code_text[3:18]
+    substring_gtin = code_text[3:17]
     lines = wrap_text(draw, substring_gtin, font, max_text_width)
     text_y = int(QR_SIZE_MM * MM_TO_PIXELS + 10)
 
-    for line in lines:
-        text_bbox = draw.textbbox((0, 0), line, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_x = (img.width - text_width) // 2
-        draw.text((text_x, text_y), line, fill="black", font=font)
-        text_y += text_bbox[3] - text_bbox[1]
+    #for line in lines:
+    text_bbox = draw.textbbox((0, 0), substring_gtin, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_x = (img.width - text_width) // 2
+    draw.text((text_x, text_y), substring_gtin, fill="black", font=font)
+    text_y += text_bbox[3] - text_bbox[1]
+
+    # Условие для присвоения значения additional_text
+    if substring_gtin   == "04650118197152":
+         additional_text = "ТР445"
+    elif substring_gtin == "04650118193338":
+         additional_text = "H230"
+    elif substring_gtin == "04650118195424":
+         additional_text = "H450"
+    elif substring_gtin == "04650118192881":
+         additional_text = "P445"
+    elif substring_gtin == "04650118197350":
+         additional_text = "P660"
+    else:
+         additional_text = ""  # Можно оставить пустым или установить значение по умолчанию
+
 
     # Вторая строка текста (пример дополнительного текста)
-    additional_text = "445"
-    additional_lines = wrap_text(draw, additional_text, font_ext, max_text_width_ext)
+    #additional_text = "445"
+    #additional_lines = wrap_text(draw, additional_text, font_ext, max_text_width_ext)
 
-    for line in additional_lines:
-        text_bbox = draw.textbbox((0, 0), line, font=font_ext)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_x = (img.width - text_width) // 2
-        draw.text((text_x, text_y), line, fill="black", font=font_ext)
-        text_y += text_bbox[3] - text_bbox[1]
+    #for line in additional_lines:
+    text_bbox = draw.textbbox((0, 0), additional_text, font=font_ext)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_x = (img.width - text_width) // 2
+    draw.text((text_x, text_y), additional_text, fill="black", font=font_ext)
+    text_y += text_bbox[3] - text_bbox[1]
 
     # Пунктирная рамка
     draw_dashed_border(draw, 0, 0, int(LABEL_WIDTH_MM * MM_TO_PIXELS) - 1, int(LABEL_HEIGHT_MM * MM_TO_PIXELS) - 1)
@@ -106,30 +123,43 @@ def generate_label_image(code_text):
     return img
 
 
+from io import BytesIO
+from reportlab.lib.utils import ImageReader
+
+
 def save_labels_to_pdf(codes, output_pdf_path, page_width_mm, page_height_mm):
     page_width_px = page_width_mm * MM_TO_PIXELS
     page_height_px = page_height_mm * MM_TO_PIXELS
 
+    # Создаем canvas для PDF
     c = canvas.Canvas(output_pdf_path, pagesize=(page_width_px, page_height_px))
 
     for code_text in codes:
         code_text = transform_code(code_text)
-        label_img = generate_label_image(code_text)
-        temp_path = "temp_label.png"
-        label_img.save(temp_path)
 
-        # Расположение метки по центру страницы
+        # Генерируем изображение метки напрямую в PIL без сохранения на диск
+        label_img = generate_label_image(code_text)
+
+        # Конвертируем изображение в поток
+        img_stream = BytesIO()
+        label_img.save(img_stream, format='PNG')
+        img_stream.seek(0)  # Сбрасываем указатель потока для использования
+
+        # Преобразуем поток изображения для использования с reportlab
+        pil_image = ImageReader(img_stream)
+
+        # Вычисляем центр страницы для размещения метки
         x_position = (page_width_px - LABEL_WIDTH_MM * MM_TO_PIXELS) / 2
         y_position = (page_height_px - LABEL_HEIGHT_MM * MM_TO_PIXELS) / 2
 
-        c.drawImage(temp_path, x_position, y_position, width=LABEL_WIDTH_MM * MM_TO_PIXELS,
+        # Добавляем изображение на страницу PDF
+        c.drawImage(pil_image, x_position, y_position,
+                    width=LABEL_WIDTH_MM * MM_TO_PIXELS,
                     height=LABEL_HEIGHT_MM * MM_TO_PIXELS)
-        c.showPage()  # Новая страница для каждой метки
+        c.showPage()  # Создаем новую страницу для каждой метки
 
+    # Сохраняем PDF
     c.save()
-
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
 
 
 def generate_preview_and_save_pdf():
@@ -190,15 +220,15 @@ def on_read_from_file():
 
 # Интерфейс
 root = tk.Tk()
-root.title("Label PDF Generator")
+root.title("Vasteco GS1 DataMartix Label PDF Generator")
 
 # Поле для ввода кода
 text_box = tk.Text(root, width=50, height=10)
 text_box.pack()
 
 # Кнопка вставки из буфера обмена
-paste_button = tk.Button(root, text="Вставить из буфера", command=paste_from_clipboard)
-paste_button.pack()
+#paste_button = tk.Button(root, text="Вставить из буфера", command=paste_from_clipboard)
+#paste_button.pack()
 
 # Кнопка "Прочитать из файла"
 read_button = tk.Button(root, text="Прочитать из файла", command=on_read_from_file)
