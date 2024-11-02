@@ -1,0 +1,1 @@
+('D:\\test\\ForFM\\DataMatrixPrint\\build\\label_print\\PYZ-00.pyz', [])

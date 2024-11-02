@@ -1,14 +1,12 @@
 from PIL import Image, ImageDraw, ImageFont
 from pylibdmtx.pylibdmtx import encode  # Библиотека для DataMatrix
 from reportlab.pdfgen import canvas
-import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from pylibdmtx.pylibdmtx import decode
 import pdfplumber
 from PIL import Image
-from io import BytesIO
-from reportlab.lib.units import mm
+
 
 # Настройки размера меток
 LABEL_WIDTH_MM = 19  # Ширина метки в мм
